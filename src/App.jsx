@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 
 const EconomicDashboard = () => {
   const [data, setData] = useState(null);
+  const [news, setNews] = useState([]);
   const [loading, setLoading] = useState(false);
   const [lastUpdate, setLastUpdate] = useState(null);
   const [emailPreview, setEmailPreview] = useState(false);
@@ -12,30 +13,29 @@ const EconomicDashboard = () => {
     setError(null);
     
     try {
-      // Vercel Serverless Function 호출
-      const response = await fetch('/api/exchange-rates');
+      // 환율 데이터 가져오기
+      const exchangeResponse = await fetch('/api/exchange-rates');
       
-      if (!response.ok) {
-        throw new Error('Failed to fetch data');
+      if (!exchangeResponse.ok) {
+        throw new Error('Failed to fetch exchange data');
       }
       
-      const result = await response.json();
+      const exchangeResult = await exchangeResponse.json();
       
-      if (!result.success) {
-        throw new Error(result.error || 'Unknown error');
+      if (!exchangeResult.success) {
+        throw new Error(exchangeResult.error || 'Unknown error');
       }
       
-      const rates = result.data.rates;
+      const rates = exchangeResult.data.rates;
       
       // 환율 계산
       const usdKrw = rates.KRW;
       const eurKrw = rates.KRW / rates.EUR;
-      const jpyKrw = (rates.KRW / rates.JPY) * 100; // 100엔당
+      const jpyKrw = (rates.KRW / rates.JPY) * 100;
       const cnyKrw = rates.KRW / rates.CNY;
       const usdJpy = rates.JPY;
       const usdCny = rates.CNY;
       
-      // 변화율 계산 (간단한 랜덤 샘플)
       const randomChange = () => (Math.random() - 0.5) * 2;
       
       const newData = {
@@ -54,11 +54,25 @@ const EconomicDashboard = () => {
         materials: {
           gold: { price: 2654.80, change: randomChange() },
           copper: { price: 4.23, change: randomChange() }
-        },
-        news_summary: "글로벌 제약사들의 바이오시밀러 경쟁이 심화되고 있으며, 원자재 가격 상승으로 인한 생산 비용 증가가 예상됩니다. 달러 강세로 수입 원료 구매 비용 부담이 커지고 있어 환율 변동에 대한 면밀한 모니터링이 필요한 상황입니다."
+        }
       };
       
       setData(newData);
+      
+      // 뉴스 데이터 가져오기
+      try {
+        const newsResponse = await fetch('/api/news');
+        if (newsResponse.ok) {
+          const newsResult = await newsResponse.json();
+          if (newsResult.success) {
+            setNews(newsResult.data);
+          }
+        }
+      } catch (newsError) {
+        console.error("뉴스 로딩 실패:", newsError);
+        // 뉴스 실패해도 환율은 표시
+      }
+      
       setLastUpdate(new Date());
     } catch (err) {
       console.error("데이터 로딩 실패:", err);
@@ -121,10 +135,18 @@ const EconomicDashboard = () => {
                   <p className="text-sm">Brent: ${data.oil_prices.brent.price.toFixed(2)} {renderChangeIndicator(data.oil_prices.brent.change)}</p>
                 </div>
                 
-                <div>
-                  <h3 className="font-bold mb-2">📰 주요 뉴스</h3>
-                  <p className="text-sm text-gray-700">{data.news_summary}</p>
-                </div>
+                {news.length > 0 && (
+                  <div>
+                    <h3 className="font-bold mb-2">📰 주요 뉴스</h3>
+                    {news.map((item, index) => (
+                      <div key={index} className="text-sm mb-2">
+                        <a href={item.link} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline font-medium">
+                          • {item.title}
+                        </a>
+                      </div>
+                    ))}
+                  </div>
+                )}
                 
                 <div className="bg-blue-50 border border-blue-200 rounded p-3 mt-4">
                   <p className="text-xs text-blue-800">💡 이 내용을 복사해서 팀 메일로 발송하실 수 있습니다.</p>
@@ -147,7 +169,7 @@ const EconomicDashboard = () => {
               <p className="text-gray-600 mt-1">
                 {lastUpdate && `최종 업데이트: ${lastUpdate.toLocaleString('ko-KR')}`}
               </p>
-              <p className="text-sm text-green-600 mt-1">✅ 실시간 환율 데이터 (ExchangeRate-API)</p>
+              <p className="text-sm text-green-600 mt-1">✅ 실시간 환율 + 제약 뉴스</p>
             </div>
             <div className="flex gap-3">
               <button
@@ -328,10 +350,29 @@ const EconomicDashboard = () => {
                 </div>
               </div>
 
-              {/* 뉴스 요약 */}
+              {/* 뉴스 */}
               <div className="lg:col-span-2 bg-white border-2 border-gray-200 rounded-lg p-6">
-                <h2 className="text-xl font-bold mb-4 text-gray-800">📰 제약업계 경제 뉴스</h2>
-                <p className="text-gray-700 leading-relaxed">{data.news_summary}</p>
+                <h2 className="text-xl font-bold mb-4 text-gray-800">📰 국내 제약·바이오 뉴스</h2>
+                {news.length > 0 ? (
+                  <div className="space-y-4">
+                    {news.map((item, index) => (
+                      <div key={index} className="border-b pb-3 last:border-b-0">
+                        <a 
+                          href={item.link} 
+                          target="_blank" 
+                          rel="noopener noreferrer" 
+                          className="text-lg font-semibold text-blue-600 hover:text-blue-800 hover:underline"
+                        >
+                          {item.title}
+                        </a>
+                        <p className="text-gray-600 text-sm mt-1">{item.description}</p>
+                        <p className="text-gray-400 text-xs mt-1">{new Date(item.pubDate).toLocaleString('ko-KR')}</p>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-gray-500">뉴스를 불러오는 중...</p>
+                )}
               </div>
             </div>
           )}
@@ -341,14 +382,14 @@ const EconomicDashboard = () => {
         <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
           <h3 className="font-bold text-blue-900 mb-2">💡 사용 안내</h3>
           <ul className="text-sm text-blue-800 space-y-1">
-            <li>• 🔄 새로고침 버튼으로 실시간 환율 업데이트</li>
+            <li>• 🔄 새로고침 버튼으로 실시간 환율 + 최신 뉴스 업데이트</li>
             <li>• 📧 이메일 미리보기로 브리핑 형식 확인</li>
             <li>• 🤝 크로스 환율은 해외 도매상 가격 협상 시 활용</li>
-            <li>• ⛽ 유가 및 원자재 가격은 참고용 데이터입니다</li>
+            <li>• 📰 제약·바이오 업계 주요 뉴스 자동 업데이트</li>
           </ul>
           <div className="mt-3 p-3 bg-green-50 border border-green-200 rounded">
             <p className="text-xs text-green-800">
-              ✅ <strong>실시간 환율:</strong> ExchangeRate-API를 통해 실시간 환율 데이터를 제공합니다.
+              ✅ <strong>실시간 데이터:</strong> 환율(exchangerate.host) + 뉴스(네이버 뉴스 API)
             </p>
           </div>
         </div>
