@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 
 const EconomicDashboard = () => {
   const [data, setData] = useState(null);
-  const [news, setNews] = useState([]);
+  const [news, setNews] = useState({ domestic: [], regulatory: [], supplyChain: [] });
   const [loading, setLoading] = useState(false);
   const [lastUpdate, setLastUpdate] = useState(null);
   const [emailPreview, setEmailPreview] = useState(false);
@@ -46,14 +46,6 @@ const EconomicDashboard = () => {
           cny_krw: { rate: cnyKrw, change: randomChange() },
           usd_jpy: { rate: usdJpy, change: randomChange() },
           usd_cny: { rate: usdCny, change: randomChange() }
-        },
-        oil_prices: {
-          wti: { price: 78.45, change: randomChange() },
-          brent: { price: 82.30, change: randomChange() }
-        },
-        materials: {
-          gold: { price: 2654.80, change: randomChange() },
-          copper: { price: 4.23, change: randomChange() }
         }
       };
       
@@ -70,7 +62,6 @@ const EconomicDashboard = () => {
         }
       } catch (newsError) {
         console.error("뉴스 로딩 실패:", newsError);
-        // 뉴스 실패해도 환율은 표시
       }
       
       setLastUpdate(new Date());
@@ -94,6 +85,36 @@ const EconomicDashboard = () => {
     }
     return <span className="text-gray-500 text-sm">➡️ 0.00%</span>;
   };
+
+  const NewsSection = ({ title, items, icon, bgColor }) => (
+    <div className={`${bgColor} rounded-lg p-6 text-white`}>
+      <h2 className="text-xl font-bold mb-4 flex items-center gap-2">
+        {icon} {title}
+      </h2>
+      {items.length > 0 ? (
+        <div className="space-y-3">
+          {items.map((item, index) => (
+            <div key={index} className="bg-white bg-opacity-20 rounded p-3">
+              <a 
+                href={item.link} 
+                target="_blank" 
+                rel="noopener noreferrer" 
+                className="font-semibold hover:underline block"
+              >
+                {item.title}
+              </a>
+              <p className="text-sm mt-1 text-white text-opacity-90">{item.description}</p>
+              <p className="text-xs mt-1 text-white text-opacity-70">
+                {new Date(item.pubDate).toLocaleDateString('ko-KR')}
+              </p>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <p className="text-white text-opacity-80">뉴스를 불러오는 중...</p>
+      )}
+    </div>
+  );
 
   const EmailPreview = () => (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
@@ -129,16 +150,23 @@ const EconomicDashboard = () => {
                   </table>
                 </div>
                 
-                <div>
-                  <h3 className="font-bold mb-2">⛽ 유가</h3>
-                  <p className="text-sm">WTI: ${data.oil_prices.wti.price.toFixed(2)} {renderChangeIndicator(data.oil_prices.wti.change)}</p>
-                  <p className="text-sm">Brent: ${data.oil_prices.brent.price.toFixed(2)} {renderChangeIndicator(data.oil_prices.brent.change)}</p>
-                </div>
-                
-                {news.length > 0 && (
+                {news.domestic.length > 0 && (
                   <div>
-                    <h3 className="font-bold mb-2">📰 주요 뉴스</h3>
-                    {news.map((item, index) => (
+                    <h3 className="font-bold mb-2">📰 국내 제약·바이오 뉴스</h3>
+                    {news.domestic.slice(0, 2).map((item, index) => (
+                      <div key={index} className="text-sm mb-2">
+                        <a href={item.link} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline font-medium">
+                          • {item.title}
+                        </a>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                
+                {news.regulatory.length > 0 && (
+                  <div>
+                    <h3 className="font-bold mb-2">⚖️ 규제·허가 뉴스</h3>
+                    {news.regulatory.slice(0, 2).map((item, index) => (
                       <div key={index} className="text-sm mb-2">
                         <a href={item.link} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline font-medium">
                           • {item.title}
@@ -169,7 +197,7 @@ const EconomicDashboard = () => {
               <p className="text-gray-600 mt-1">
                 {lastUpdate && `최종 업데이트: ${lastUpdate.toLocaleString('ko-KR')}`}
               </p>
-              <p className="text-sm text-green-600 mt-1">✅ 실시간 환율 + 제약 뉴스</p>
+              <p className="text-sm text-green-600 mt-1">✅ 실시간 환율 + 제약 뉴스 (최신순)</p>
             </div>
             <div className="flex gap-3">
               <button
@@ -287,92 +315,30 @@ const EconomicDashboard = () => {
                 </div>
               </div>
 
-              {/* 유가 정보 */}
-              <div className="bg-gradient-to-br from-orange-500 to-red-500 rounded-lg p-6 text-white">
-                <h2 className="text-xl font-bold mb-4 flex items-center gap-2">
-                  ⛽ 국제 유가
-                </h2>
-                <div className="space-y-3">
-                  <div className="bg-white bg-opacity-20 rounded p-3">
-                    <div className="flex justify-between items-center">
-                      <span className="font-semibold">WTI</span>
-                      <div className="text-right">
-                        <div className="text-2xl font-bold">${data.oil_prices.wti.price.toFixed(2)}</div>
-                        <div className="text-sm">{renderChangeIndicator(data.oil_prices.wti.change)}</div>
-                      </div>
-                    </div>
-                  </div>
-                  
-                  <div className="bg-white bg-opacity-20 rounded p-3">
-                    <div className="flex justify-between items-center">
-                      <span className="font-semibold">Brent</span>
-                      <div className="text-right">
-                        <div className="text-2xl font-bold">${data.oil_prices.brent.price.toFixed(2)}</div>
-                        <div className="text-sm">{renderChangeIndicator(data.oil_prices.brent.change)}</div>
-                      </div>
-                    </div>
-                  </div>
-                  
-                  <div className="bg-white bg-opacity-30 rounded p-3 mt-3">
-                    <p className="text-sm">📦 물류비용 영향도: {data.oil_prices.wti.price > 80 ? '높음' : '보통'}</p>
-                    <p className="text-xs mt-1 text-white text-opacity-80">* 유가 데이터는 참고용입니다</p>
-                  </div>
-                </div>
-              </div>
+              {/* 국내 제약·바이오 뉴스 */}
+              <NewsSection 
+                title="국내 제약·바이오 뉴스"
+                items={news.domestic}
+                icon="📰"
+                bgColor="bg-gradient-to-br from-emerald-500 to-emerald-600"
+              />
 
-              {/* 원자재 가격 */}
-              <div className="bg-gradient-to-br from-yellow-500 to-yellow-600 rounded-lg p-6 text-white">
-                <h2 className="text-xl font-bold mb-4">🏭 주요 원자재</h2>
-                <div className="space-y-3">
-                  <div className="bg-white bg-opacity-20 rounded p-3">
-                    <div className="flex justify-between items-center">
-                      <span className="font-semibold">금 (Gold)</span>
-                      <div className="text-right">
-                        <div className="text-2xl font-bold">${data.materials.gold.price.toFixed(2)}/oz</div>
-                        <div className="text-sm">{renderChangeIndicator(data.materials.gold.change)}</div>
-                      </div>
-                    </div>
-                  </div>
-                  
-                  <div className="bg-white bg-opacity-20 rounded p-3">
-                    <div className="flex justify-between items-center">
-                      <span className="font-semibold">구리 (Copper)</span>
-                      <div className="text-right">
-                        <div className="text-2xl font-bold">${data.materials.copper.price.toFixed(2)}/lb</div>
-                        <div className="text-sm">{renderChangeIndicator(data.materials.copper.change)}</div>
-                      </div>
-                    </div>
-                  </div>
-                  
-                  <div className="bg-white bg-opacity-30 rounded p-3 mt-3">
-                    <p className="text-xs text-white text-opacity-80">* 원자재 가격은 참고용입니다</p>
-                  </div>
-                </div>
-              </div>
+              {/* 규제·허가 뉴스 */}
+              <NewsSection 
+                title="규제·허가 뉴스"
+                items={news.regulatory}
+                icon="⚖️"
+                bgColor="bg-gradient-to-br from-orange-500 to-red-500"
+              />
 
-              {/* 뉴스 */}
-              <div className="lg:col-span-2 bg-white border-2 border-gray-200 rounded-lg p-6">
-                <h2 className="text-xl font-bold mb-4 text-gray-800">📰 국내 제약·바이오 뉴스</h2>
-                {news.length > 0 ? (
-                  <div className="space-y-4">
-                    {news.map((item, index) => (
-                      <div key={index} className="border-b pb-3 last:border-b-0">
-                        <a 
-                          href={item.link} 
-                          target="_blank" 
-                          rel="noopener noreferrer" 
-                          className="text-lg font-semibold text-blue-600 hover:text-blue-800 hover:underline"
-                        >
-                          {item.title}
-                        </a>
-                        <p className="text-gray-600 text-sm mt-1">{item.description}</p>
-                        <p className="text-gray-400 text-xs mt-1">{new Date(item.pubDate).toLocaleString('ko-KR')}</p>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <p className="text-gray-500">뉴스를 불러오는 중...</p>
-                )}
+              {/* 공급망 이슈 뉴스 */}
+              <div className="lg:col-span-2">
+                <NewsSection 
+                  title="공급망 이슈 뉴스"
+                  items={news.supplyChain}
+                  icon="🚛"
+                  bgColor="bg-gradient-to-br from-yellow-500 to-yellow-600"
+                />
               </div>
             </div>
           )}
@@ -385,11 +351,12 @@ const EconomicDashboard = () => {
             <li>• 🔄 새로고침 버튼으로 실시간 환율 + 최신 뉴스 업데이트</li>
             <li>• 📧 이메일 미리보기로 브리핑 형식 확인</li>
             <li>• 🤝 크로스 환율은 해외 도매상 가격 협상 시 활용</li>
-            <li>• 📰 제약·바이오 업계 주요 뉴스 자동 업데이트</li>
+            <li>• 📰 제약업계 뉴스 자동 업데이트 (최신순 정렬)</li>
+            <li>• ⚖️ 규제 변화 및 공급망 이슈 모니터링</li>
           </ul>
           <div className="mt-3 p-3 bg-green-50 border border-green-200 rounded">
             <p className="text-xs text-green-800">
-              ✅ <strong>실시간 데이터:</strong> 환율(exchangerate.host) + 뉴스(네이버 뉴스 API)
+              ✅ <strong>실시간 데이터:</strong> 환율(exchangerate.host) + 뉴스(네이버 뉴스 API, 최신순)
             </p>
           </div>
         </div>
