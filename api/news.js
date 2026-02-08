@@ -1,29 +1,40 @@
-// Vercel Serverless Function for fetching Naver News (3 categories)
+// Vercel Serverless Function for filtered pharma news
 export default async function handler(req, res) {
-  // CORS 헤더 설정
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 
-  // OPTIONS 요청 처리
   if (req.method === 'OPTIONS') {
     res.status(200).end();
     return;
   }
 
-  // 네이버 API 인증 정보
   const clientId = 'Rjul4tuTrwGobWuUlNaK';
   const clientSecret = 'N7qwJfqqFN';
 
-  // HTML 태그 제거 함수
   const removeHtmlTags = (text) => {
     return text.replace(/<[^>]*>/g, '').replace(/&quot;/g, '"').replace(/&amp;/g, '&');
   };
 
-  // 뉴스 검색 함수
-  const fetchNews = async (query, display = 3) => {
-    const encodedQuery = encodeURIComponent(query);
-    const apiUrl = `https://openapi.naver.com/v1/search/news.json?query=${encodedQuery}&display=${display}&sort=date`; // 최신순 정렬
+  // 제약 전문 언론사 도메인
+  const pharmaMedia = [
+    'yakup.com',         // 약업신문
+    'pharmnews.com',     // 팜뉴스
+    'medipana.com',      // 메디파나뉴스
+    'medicaltimes.com',  // 메디컬타임즈
+    'docdocdoc.co.kr'    // 청년의사
+  ];
+
+  // 긴급 키워드
+  const urgentKeywords = ['리콜', '회수', '공급 중단', '생산 중단', '품절', '판매 중지', '허가 취소', '긴급'];
+  
+  // 중요 키워드
+  const importantKeywords = ['가격 인상', '허가', '승인', 'FDA', '식약처', '품목허가', '임상', '신약'];
+
+  try {
+    // 더 많은 뉴스 가져오기 (필터링할 것이므로)
+    const query = encodeURIComponent('제약 OR 바이오 OR 의약품');
+    const apiUrl = `https://openapi.naver.com/v1/search/news.json?query=${query}&display=50&sort=date`;
 
     const response = await fetch(apiUrl, {
       headers: {
@@ -33,42 +44,71 @@ export default async function handler(req, res) {
     });
 
     if (!response.ok) {
-      throw new Error(`Failed to fetch news for query: ${query}`);
+      throw new Error('Failed to fetch news');
     }
 
     const data = await response.json();
+
+    // 제약 전문지 필터링
+    const filteredNews = data.items
+      .map(item => ({
+        title: removeHtmlTags(item.title),
+        description: removeHtmlTags(item.description),
+        link: item.link,
+        pubDate: item.pubDate,
+        originalLink: item.originallink
+      }))
+      .filter(item => {
+        // 전문 언론사만 포함
+        return pharmaMedia.some(domain => 
+          item.link.includes(domain) || item.originalLink?.includes(domain)
+        );
+      });
+
+    // 우선순위 분류
+    const categorizeNews = (item) => {
+      const text = item.title + ' ' + item.description;
+      
+      if (urgentKeywords.some(keyword => text.includes(keyword))) {
+        return { ...item, priority: 1, category: 'urgent', icon: '🚨', label: '긴급' };
+      }
+      if (importantKeywords.some(keyword => text.includes(keyword))) {
+        return { ...item, priority: 2, category: 'important', icon: '⚠️', label: '중요' };
+      }
+      return { ...item, priority: 3, category: 'normal', icon: '📰', label: '주요 뉴스' };
+    };
+
+    const categorizedNews = filteredNews.map(categorizeNews);
     
-    return data.items.map(item => ({
-      title: removeHtmlTags(item.title),
-      description: removeHtmlTags(item.description),
-      link: item.link,
-      pubDate: item.pubDate,
-    }));
-  };
+    // 우선순위로 정렬
+    categorizedNews.sort((a, b) => a.priority - b.priority);
 
-  try {
-    // 3가지 카테고리 뉴스 가져오기
-    const [domesticNews, regulatoryNews, supplyChainNews] = await Promise.all([
-      fetchNews('제약 OR 바이오', 3),           // 국내 제약·바이오 뉴스
-      fetchNews('식약처 OR FDA OR 허가', 3),    // 규제·허가 뉴스
-      fetchNews('원료의약품 OR 공급망 OR 수급', 3), // 공급망 이슈
-    ]);
+    // 카테고리별로 1개씩 선택 (총 3개)
+    const urgent = categorizedNews.find(n => n.category === 'urgent');
+    const important = categorizedNews.find(n => n.category === 'important');
+    const normal = categorizedNews.find(n => n.category === 'normal');
 
-    // 성공 응답
+    const finalNews = [urgent, important, normal].filter(Boolean);
+    
+    // 3개 미만이면 일반 뉴스로 채우기
+    if (finalNews.length < 3) {
+      const remaining = categorizedNews
+        .filter(n => !finalNews.includes(n))
+        .slice(0, 3 - finalNews.length);
+      finalNews.push(...remaining);
+    }
+
     res.status(200).json({
       success: true,
-      data: {
-        domestic: domesticNews,
-        regulatory: regulatoryNews,
-        supplyChain: supplyChainNews,
-      },
-      timestamp: new Date().toISOString(),
+      data: finalNews.slice(0, 3), // 최대 3개
+      total: categorizedNews.length,
+      timestamp: new Date().toISOString()
     });
   } catch (error) {
-    console.error('Naver News API error:', error);
+    console.error('News API error:', error);
     res.status(500).json({
       success: false,
-      error: error.message,
+      error: error.message
     });
   }
 }
