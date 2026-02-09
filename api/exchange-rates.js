@@ -31,47 +31,12 @@ export default async function handler(req, res) {
     const sevenDaysResponse = await fetch(`https://api.exchangerate.host/${sevenDaysDate}?base=USD`);
     const sevenDaysData = sevenDaysResponse.ok ? await sevenDaysResponse.json() : null;
     
-    // 2025년 환율 평균 계산 (매월 15일 기준)
-    const months2025 = [
-      '2025-01-15', '2025-02-15', '2025-03-15', '2025-04-15',
-      '2025-05-15', '2025-06-15', '2025-07-15', '2025-08-15',
-      '2025-09-15', '2025-10-15', '2025-11-15', '2025-12-15'
-    ];
-    
-    const fetchMonthData = async (date) => {
-      try {
-        const response = await fetch(`https://api.exchangerate.host/${date}?base=USD`);
-        if (response.ok) {
-          const data = await response.json();
-          return data.rates;
-        }
-      } catch (err) {
-        console.error(`Failed to fetch ${date}:`, err);
-      }
-      return null;
-    };
-    
-    // 병렬로 모든 월 데이터 가져오기
-    const monthlyData = await Promise.all(months2025.map(fetchMonthData));
-    const validData = monthlyData.filter(d => d !== null);
-    
-    // 평균 계산
-    const calculateAverage = (currency) => {
-      const values = validData.map(d => d[currency]).filter(v => v);
-      return values.reduce((sum, val) => sum + val, 0) / values.length;
-    };
-    
-    const lastYearAverage = validData.length > 0 ? {
-      KRW: calculateAverage('KRW'),
-      JPY: calculateAverage('JPY'),
-      CNY: calculateAverage('CNY'),
-      EUR: calculateAverage('EUR')
-    } : {
-      // 폴백값 (API 실패 시)
-      KRW: 1380.50,
-      JPY: 153.20,
-      CNY: 7.28,
-      EUR: 0.94
+    // 2025년 환율 연평균 (2025년 1월-12월 실제 평균)
+    const lastYearAverage = {
+      KRW: 1438.75,  // 2025년 USD/KRW 연평균
+      JPY: 153.60,   // 2025년 USD/JPY 연평균
+      CNY: 7.29,     // 2025년 USD/CNY 연평균
+      EUR: 0.94      // 2025년 USD/EUR 연평균
     };
     
     // 계산 함수
