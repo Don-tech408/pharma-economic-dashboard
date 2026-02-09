@@ -1,4 +1,4 @@
-// Vercel Serverless Function for enhanced exchange rates with historical comparison
+// Vercel Serverless Function - 환율 API (frankfurter.dev 사용, 무료/키 불필요)
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
@@ -10,122 +10,89 @@ export default async function handler(req, res) {
   }
 
   try {
-    // 현재 환율
-    const currentResponse = await fetch('https://api.exchangerate.host/latest?base=USD');
-    if (!currentResponse.ok) throw new Error('Failed to fetch current rates');
-    const currentData = await currentResponse.json();
+    const now = new Date();
+    const d7 = new Date(now); d7.setDate(d7.getDate() - 7);
+    const d30 = new Date(now); d30.setDate(d30.getDate() - 30);
+    const fmt = (d) => d.toISOString().split('T')[0];
+
+    // frankfurter.dev: ECB 기반 무료 API (키 불필요)
+    const [curRes, d7Res, d30Res] = await Promise.all([
+      fetch('https://api.frankfurter.dev/latest?base=USD&symbols=KRW,JPY,CNY,EUR'),
+      fetch(`https://api.frankfurter.dev/${fmt(d7)}?base=USD&symbols=KRW,JPY,CNY,EUR`),
+      fetch(`https://api.frankfurter.dev/${fmt(d30)}?base=USD&symbols=KRW,JPY,CNY,EUR`),
+    ]);
+
+    if (!curRes.ok) throw new Error('Failed to fetch current rates');
     
-    // 30일 전 환율 (트렌드용)
-    const thirtyDaysAgo = new Date();
-    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-    const thirtyDaysDate = thirtyDaysAgo.toISOString().split('T')[0];
-    
-    const thirtyDaysResponse = await fetch(`https://api.exchangerate.host/${thirtyDaysDate}?base=USD`);
-    const thirtyDaysData = thirtyDaysResponse.ok ? await thirtyDaysResponse.json() : null;
-    
-    // 7일 전 환율
-    const sevenDaysAgo = new Date();
-    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-    const sevenDaysDate = sevenDaysAgo.toISOString().split('T')[0];
-    
-    const sevenDaysResponse = await fetch(`https://api.exchangerate.host/${sevenDaysDate}?base=USD`);
-    const sevenDaysData = sevenDaysResponse.ok ? await sevenDaysResponse.json() : null;
-    
-    // 2025년 환율 연평균 (2025년 1월-12월 실제 평균)
+    const curData = await curRes.json();
+    const d7Data = d7Res.ok ? await d7Res.json() : curData;
+    const d30Data = d30Res.ok ? await d30Res.json() : curData;
+
+    const rates = curData.rates;
+    const d7Rates = d7Data.rates;
+    const d30Rates = d30Data.rates;
+
+    // 2025년 환율 연평균
     const lastYearAverage = {
-      KRW: 1438.75,  // 2025년 USD/KRW 연평균
-      JPY: 153.60,   // 2025년 USD/JPY 연평균
-      CNY: 7.29,     // 2025년 USD/CNY 연평균
-      EUR: 0.94      // 2025년 USD/EUR 연평균
+      KRW: 1438.75,
+      JPY: 153.60,
+      CNY: 7.29,
+      EUR: 0.94,
     };
-    
-    // 계산 함수
-    const calculateChange = (current, previous) => {
-      if (!previous) return 0;
-      return ((current - previous) / previous) * 100;
+
+    const calcChange = (cur, prev) => (prev ? ((cur - prev) / prev) * 100 : 0);
+
+    const genSignal = (cur, lastYear, sevenDay) => {
+      const vsLY = calcChange(cur, lastYear);
+      const vs7 = calcChange(cur, sevenDay);
+      if (vsLY < -2 && vs7 < 0) return { signal: 'buy', message: '구매 유리 구간' };
+      if (vsLY > 2 && vs7 > 0) return { signal: 'wait', message: '구매 주의' };
+      return { signal: 'neutral', message: '안정적' };
     };
-    
-    const rates = currentData.rates;
-    const thirtyDaysRates = thirtyDaysData?.rates || rates;
-    const sevenDaysRates = sevenDaysData?.rates || rates;
-    
-    // 구매 시그널 생성
-    const generateSignal = (current, lastYear, sevenDay, thirtyDay) => {
-      const vsLastYear = calculateChange(current, lastYear);
-      const vsSevenDay = calculateChange(current, sevenDay);
-      const vsThirtyDay = calculateChange(current, thirtyDay);
-      
-      // 로직: 작년 평균보다 낮고, 하락 추세면 '사라'
-      if (vsLastYear < -2 && vsSevenDay < 0) {
-        return { signal: 'buy', color: 'green', message: '구매 유리 구간' };
-      }
-      // 작년 평균보다 높고, 상승 추세면 '기다려'
-      if (vsLastYear > 2 && vsSevenDay > 0) {
-        return { signal: 'wait', color: 'red', message: '구매 주의' };
-      }
-      // 그 외
-      return { signal: 'neutral', color: 'blue', message: '안정적' };
-    };
-    
+
     const usdKrw = rates.KRW;
     const usdJpy = rates.JPY;
     const usdCny = rates.CNY;
-    const usdEur = rates.EUR;
-    
+
     const data = {
       current: {
         usd_krw: usdKrw,
         usd_jpy: usdJpy,
         usd_cny: usdCny,
-        eur_krw: usdKrw / usdEur,
+        eur_krw: usdKrw / rates.EUR,
         jpy_krw: (usdKrw / usdJpy) * 100,
-        cny_krw: usdKrw / usdCny
+        cny_krw: usdKrw / usdCny,
       },
       lastYearAvg: lastYearAverage,
-      sevenDayAvg: {
-        usd_krw: sevenDaysRates.KRW,
-        usd_jpy: sevenDaysRates.JPY,
-        usd_cny: sevenDaysRates.CNY
-      },
-      thirtyDayAvg: {
-        usd_krw: thirtyDaysRates.KRW,
-        usd_jpy: thirtyDaysRates.JPY,
-        usd_cny: thirtyDaysRates.CNY
-      },
+      sevenDayAvg: { usd_krw: d7Rates.KRW, usd_jpy: d7Rates.JPY, usd_cny: d7Rates.CNY },
+      thirtyDayAvg: { usd_krw: d30Rates.KRW, usd_jpy: d30Rates.JPY, usd_cny: d30Rates.CNY },
       changes: {
         usd_krw: {
-          vsLastYear: calculateChange(usdKrw, lastYearAverage.KRW),
-          vsSevenDay: calculateChange(usdKrw, sevenDaysRates.KRW),
-          vsThirtyDay: calculateChange(usdKrw, thirtyDaysRates.KRW)
+          vsLastYear: calcChange(usdKrw, lastYearAverage.KRW),
+          vsSevenDay: calcChange(usdKrw, d7Rates.KRW),
+          vsThirtyDay: calcChange(usdKrw, d30Rates.KRW),
         },
         usd_jpy: {
-          vsLastYear: calculateChange(usdJpy, lastYearAverage.JPY),
-          vsSevenDay: calculateChange(usdJpy, sevenDaysRates.JPY),
-          vsThirtyDay: calculateChange(usdJpy, thirtyDaysRates.JPY)
+          vsLastYear: calcChange(usdJpy, lastYearAverage.JPY),
+          vsSevenDay: calcChange(usdJpy, d7Rates.JPY),
+          vsThirtyDay: calcChange(usdJpy, d30Rates.JPY),
         },
         usd_cny: {
-          vsLastYear: calculateChange(usdCny, lastYearAverage.CNY),
-          vsSevenDay: calculateChange(usdCny, sevenDaysRates.CNY),
-          vsThirtyDay: calculateChange(usdCny, sevenDaysRates.CNY)
-        }
+          vsLastYear: calcChange(usdCny, lastYearAverage.CNY),
+          vsSevenDay: calcChange(usdCny, d7Rates.CNY),
+          vsThirtyDay: calcChange(usdCny, d30Rates.CNY),
+        },
       },
       signals: {
-        usd_krw: generateSignal(usdKrw, lastYearAverage.KRW, sevenDaysRates.KRW, thirtyDaysRates.KRW),
-        usd_jpy: generateSignal(usdJpy, lastYearAverage.JPY, sevenDaysRates.JPY, thirtyDaysRates.JPY),
-        usd_cny: generateSignal(usdCny, lastYearAverage.CNY, sevenDaysRates.CNY, thirtyDaysRates.CNY)
-      }
+        usd_krw: genSignal(usdKrw, lastYearAverage.KRW, d7Rates.KRW),
+        usd_jpy: genSignal(usdJpy, lastYearAverage.JPY, d7Rates.JPY),
+        usd_cny: genSignal(usdCny, lastYearAverage.CNY, d7Rates.CNY),
+      },
     };
 
-    res.status(200).json({
-      success: true,
-      data: data,
-      timestamp: new Date().toISOString()
-    });
+    res.status(200).json({ success: true, data, timestamp: new Date().toISOString() });
   } catch (error) {
     console.error('Exchange rate API error:', error);
-    res.status(500).json({
-      success: false,
-      error: error.message
-    });
+    res.status(500).json({ success: false, error: error.message });
   }
 }
